@@ -3472,15 +3472,10 @@ static void set_cpu_partial(struct kmem_cache *s)
 #endif
 }
 
-/*
- * calculate_sizes() determines the order and the distribution of data within
- * a slab object.
- */
-static int calculate_sizes(struct kmem_cache *s, int forced_order)
+void prepare_size(struct kmem_cache *s)
 {
 	slab_flags_t flags = s->flags;
 	unsigned int size = s->object_size;
-	unsigned int order;
 
 	/*
 	 * Round up object size to the next word boundary. We can only
@@ -3565,10 +3560,22 @@ static int calculate_sizes(struct kmem_cache *s, int forced_order)
 	 */
 	size = ALIGN(size, s->align);
 	s->size = size;
+}
+
+/*
+ * calculate_sizes() determines the order and the distribution of data within
+ * a slab object.
+ */
+static int calculate_sizes(struct kmem_cache *s, int forced_order)
+{
+	int order;
+
+	prepare_size(s);
+
 	if (forced_order >= 0)
 		order = forced_order;
 	else
-		order = calculate_order(size);
+		order = calculate_order(s->size);
 
 	if ((int)order < 0)
 		return 0;
@@ -3589,8 +3596,8 @@ static int calculate_sizes(struct kmem_cache *s, int forced_order)
 	/*
 	 * Determine the number of objects per slab
 	 */
-	s->oo = oo_make(order, size);
-	s->min = oo_make(get_order(size), size);
+	s->oo = oo_make(order, s->size);
+	s->min = oo_make(get_order(s->size), s->size);
 	if (oo_objects(s->oo) > oo_objects(s->max))
 		s->max = s->oo;
 
