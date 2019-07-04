@@ -295,6 +295,11 @@ int slab_unmergeable(struct kmem_cache *s)
 	if (slab_nomerge || (s->flags & SLAB_NEVER_MERGE))
 		return 1;
 
+#ifdef CONFIG_SLUB
+	if (slub_unmergeable(s))
+		return 1;
+#endif
+
 	if (!is_root_cache(s))
 		return 1;
 
