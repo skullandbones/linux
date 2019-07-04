@@ -101,6 +101,9 @@ extern void create_boot_cache(struct kmem_cache *, const char *name,
 			unsigned int useroffset, unsigned int usersize);
 
 int slab_unmergeable(struct kmem_cache *s);
+#ifdef CONFIG_SLUB
+int slub_unmergeable(struct kmem_cache *s);
+#endif
 struct kmem_cache *find_mergeable(unsigned size, unsigned align,
 		slab_flags_t flags, const char *name, void (*ctor)(void *));
 void prepare_size(struct kmem_cache *s);

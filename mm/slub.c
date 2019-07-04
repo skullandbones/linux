@@ -4273,6 +4273,18 @@ void __init kmem_cache_init_late(void)
 {
 }
 
+/*
+ * Is the SLUB cache unmergeable ?
+ */
+int slub_unmergeable(struct kmem_cache *s)
+{
+	if (disable_higher_order_debug &&
+		(slub_debug & DEBUG_METADATA_FLAGS))
+		return 1;
+
+	return 0;
+}
+
 struct kmem_cache *
 __kmem_cache_alias(const char *name, unsigned int size, unsigned int align,
 		   slab_flags_t flags, void (*ctor)(void *))
@@ -5731,10 +5743,6 @@ static int sysfs_slab_add(struct kmem_cache *s)
 		kobject_init(&s->kobj, &slab_ktype);
 		return 0;
 	}
-
-	if (!unmergeable && disable_higher_order_debug &&
-			(slub_debug & DEBUG_METADATA_FLAGS))
-		unmergeable = 1;
 
 	if (unmergeable) {
 		/*
