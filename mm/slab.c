@@ -2035,7 +2035,7 @@ int __kmem_cache_create(struct kmem_cache *cachep, slab_flags_t flags)
 	gfp_t gfp;
 	int err;
 
-	prepare_size(cachep, true);
+	prepare_size(cachep);
 
 	if (slab_is_available())
 		gfp = GFP_KERNEL;
