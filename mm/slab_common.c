@@ -317,6 +317,7 @@ struct kmem_cache *find_mergeable(unsigned int size, unsigned int align,
 		slab_flags_t flags, const char *name, void (*ctor)(void *))
 {
 	struct kmem_cache *s;
+	struct kmem_cache requested;
 
 	if (slab_nomerge)
 		return NULL;
@@ -324,31 +325,32 @@ struct kmem_cache *find_mergeable(unsigned int size, unsigned int align,
 	if (ctor)
 		return NULL;
 
+	requested.object_size = size;
+	requested.ctor = ctor;
+	requested.name = name;
+	requested.offset = 0;
+	requested.inuse = 0;
+	requested.size = 0;
+	requested.refcount = 0;
+
 	size = ALIGN(size, sizeof(void *));
-	align = calculate_alignment(flags, align, size);
-	size = ALIGN(size, align);
-	flags = kmem_cache_flags(size, flags, name, NULL);
+	requested.align = calculate_alignment(flags, align, size);
+	requested.flags = kmem_cache_flags(size, flags, name, NULL);
 
 	if (flags & SLAB_NEVER_MERGE)
 		return NULL;
+
+	prepare_size(&requested);
 
 	list_for_each_entry_reverse(s, &slab_root_caches, root_caches_node) {
 		if (slab_unmergeable(s))
 			continue;
 
-		if (size > s->size)
+		if (requested.size != s->size)
 			continue;
 
-		if ((flags & SLAB_MERGE_SAME) != (s->flags & SLAB_MERGE_SAME))
-			continue;
-		/*
-		 * Check if alignment is compatible.
-		 * Courtesy of Adrian Drzewiecki
-		 */
-		if ((s->size & ~(align - 1)) != s->size)
-			continue;
-
-		if (s->size - size >= sizeof(void *))
+		if ((requested.flags & SLAB_MERGE_SAME) !=
+		    (s->flags & SLAB_MERGE_SAME))
 			continue;
 
 		if (IS_ENABLED(CONFIG_SLAB) && align &&
