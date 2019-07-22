@@ -319,12 +319,6 @@ struct kmem_cache *find_mergeable(unsigned int size, unsigned int align,
 	struct kmem_cache *s;
 	struct kmem_cache requested;
 
-	if (slab_nomerge)
-		return NULL;
-
-	if (ctor)
-		return NULL;
-
 	requested.object_size = size;
 	requested.ctor = ctor;
 	requested.name = name;
@@ -334,12 +328,13 @@ struct kmem_cache *find_mergeable(unsigned int size, unsigned int align,
 #endif
 	requested.size = 0;
 	requested.refcount = 0;
+	requested.usersize = 0;
 
 	size = ALIGN(size, sizeof(void *));
 	requested.align = calculate_alignment(flags, align, size);
 	requested.flags = kmem_cache_flags(size, flags, name, NULL);
 
-	if (flags & SLAB_NEVER_MERGE)
+	if (slab_unmergeable(&requested))
 		return NULL;
 
 	prepare_size(&requested);
