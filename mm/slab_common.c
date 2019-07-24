@@ -342,7 +342,7 @@ struct kmem_cache *find_mergeable(unsigned int size, unsigned int align,
 	if (slab_unmergeable(&requested))
 		return NULL;
 
-	prepare_size(&requested);
+	prepare_size(&requested, true);
 
 	list_for_each_entry_reverse(s, &slab_root_caches, root_caches_node) {
 		if (slab_unmergeable(s))

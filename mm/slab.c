@@ -1811,15 +1811,9 @@ __kmem_cache_alias(const char *name, unsigned int size, unsigned int align,
 	struct kmem_cache *cachep;
 
 	cachep = find_mergeable(size, align, flags, name, ctor);
-	if (cachep) {
+	if (cachep)
 		cachep->refcount++;
 
-		/*
-		 * Adjust the object sizes so that we clear
-		 * the complete object on kzalloc.
-		 */
-		cachep->object_size = max_t(int, cachep->object_size, size);
-	}
 	return cachep;
 }
 
@@ -1896,11 +1890,13 @@ static bool set_on_slab_cache(struct kmem_cache *cachep,
 	return true;
 }
 
-void prepare_size(struct kmem_cache *cachep)
+void prepare_size(struct kmem_cache *cachep, bool allow_maximise)
 {
 	size_t ralign = BYTES_PER_WORD;
 	slab_flags_t flags = cachep->flags;
 	unsigned int size = cachep->object_size;
+	unsigned int base;
+	unsigned int reserve;
 
 #if DEBUG
 #if FORCED_DEBUG
@@ -1924,6 +1920,7 @@ void prepare_size(struct kmem_cache *cachep)
 	 * sure any on-slab bufctl's are also correctly aligned.
 	 */
 	size = ALIGN(size, BYTES_PER_WORD);
+	base = size;
 
 	if (flags & SLAB_RED_ZONE) {
 		ralign = REDZONE_ALIGN;
@@ -1973,6 +1970,8 @@ void prepare_size(struct kmem_cache *cachep)
 
 	kasan_cache_create(cachep, &size, &flags);
 
+	reserve = size - base;
+
 	size = ALIGN(size, cachep->align);
 	/*
 	 * We should restrict the number of objects in a slab to implement
@@ -2005,6 +2004,19 @@ void prepare_size(struct kmem_cache *cachep)
 
 	cachep->flags = flags;
 	cachep->size = size;
+
+	if (allow_maximise && !slab_unmergeable(cachep)) {
+		/*
+		 * To assist with making SLAB caches "mergeable", maximise the
+		 * object_size within the overall size of the SLAB cache slab
+		 * so that only one "mergeable" cache of a specific slab size
+		 * is needed.
+		 */
+
+		/* Can object_size be maximised ? */
+		if (cachep->size - cachep->object_size > reserve)
+			cachep->object_size =  cachep->size - reserve;
+	}
 }
 
 /**
@@ -2035,7 +2047,7 @@ int __kmem_cache_create(struct kmem_cache *cachep, slab_flags_t flags)
 	gfp_t gfp;
 	int err;
 
-	prepare_size(cachep);
+	prepare_size(cachep, true);
 
 	if (slab_is_available())
 		gfp = GFP_KERNEL;
