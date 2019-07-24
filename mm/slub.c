@@ -3472,10 +3472,11 @@ static void set_cpu_partial(struct kmem_cache *s)
 #endif
 }
 
-void prepare_size(struct kmem_cache *s)
+void prepare_size(struct kmem_cache *s, bool allow_maximise)
 {
 	slab_flags_t flags = s->flags;
 	unsigned int size = s->object_size;
+	int reserve;
 
 	/*
 	 * Round up object size to the next word boundary. We can only
@@ -3552,6 +3553,7 @@ void prepare_size(struct kmem_cache *s)
 		size += s->red_left_pad;
 	}
 #endif
+	reserve = size - s->inuse;
 
 	/*
 	 * SLUB stores one object immediately after another beginning from
@@ -3560,17 +3562,33 @@ void prepare_size(struct kmem_cache *s)
 	 */
 	size = ALIGN(size, s->align);
 	s->size = size;
+
+	if (allow_maximise && !slab_unmergeable(s)) {
+		/*
+		 * To assist with making SLUB caches "mergeable", maximise the
+		 * object_size within the overall size of the SLUB cache slab
+		 * so that only one "mergeable" cache of a specific slab size
+		 * is needed.
+		 */
+
+		/* Can object_size be maximised ? */
+		if (s->size - s->object_size > reserve) {
+			s->object_size =  s->size - reserve;
+			s->inuse = s->size - reserve;
+		}
+	}
 }
 
 /*
  * calculate_sizes() determines the order and the distribution of data within
  * a slab object.
  */
-static int calculate_sizes(struct kmem_cache *s, int forced_order)
+static int calculate_sizes(struct kmem_cache *s, int forced_order,
+			   bool allow_maximise)
 {
 	int order;
 
-	prepare_size(s);
+	prepare_size(s, allow_maximise);
 
 	if (forced_order >= 0)
 		order = forced_order;
@@ -3611,7 +3629,7 @@ static int kmem_cache_open(struct kmem_cache *s, slab_flags_t flags)
 	s->random = get_random_long();
 #endif
 
-	if (!calculate_sizes(s, -1))
+	if (!calculate_sizes(s, -1, true))
 		goto error;
 	if (disable_higher_order_debug) {
 		/*
@@ -3621,7 +3639,7 @@ static int kmem_cache_open(struct kmem_cache *s, slab_flags_t flags)
 		if (get_order(s->size) > get_order(s->object_size)) {
 			s->flags &= ~DEBUG_METADATA_FLAGS;
 			s->offset = 0;
-			if (!calculate_sizes(s, -1))
+			if (!calculate_sizes(s, -1, false))
 				goto error;
 		}
 	}
@@ -4295,13 +4313,6 @@ __kmem_cache_alias(const char *name, unsigned int size, unsigned int align,
 	if (s) {
 		s->refcount++;
 
-		/*
-		 * Adjust the object sizes so that we clear
-		 * the complete object on kzalloc.
-		 */
-		s->object_size = max(s->object_size, size);
-		s->inuse = max(s->inuse, ALIGN(size, sizeof(void *)));
-
 		for_each_memcg_cache(c, s) {
 			c->object_size = s->object_size;
 			c->inuse = max(c->inuse, ALIGN(size, sizeof(void *)));
@@ -4967,7 +4978,7 @@ static ssize_t order_store(struct kmem_cache *s,
 	if (order > slub_max_order || order < slub_min_order)
 		return -EINVAL;
 
-	calculate_sizes(s, order);
+	calculate_sizes(s, order, false);
 	return length;
 }
 
@@ -5204,7 +5215,7 @@ static ssize_t red_zone_store(struct kmem_cache *s,
 	if (buf[0] == '1') {
 		s->flags |= SLAB_RED_ZONE;
 	}
-	calculate_sizes(s, -1);
+	calculate_sizes(s, -1, false);
 	return length;
 }
 SLAB_ATTR(red_zone);
@@ -5224,7 +5235,7 @@ static ssize_t poison_store(struct kmem_cache *s,
 	if (buf[0] == '1') {
 		s->flags |= SLAB_POISON;
 	}
-	calculate_sizes(s, -1);
+	calculate_sizes(s, -1, false);
 	return length;
 }
 SLAB_ATTR(poison);
@@ -5245,7 +5256,7 @@ static ssize_t store_user_store(struct kmem_cache *s,
 		s->flags &= ~__CMPXCHG_DOUBLE;
 		s->flags |= SLAB_STORE_USER;
 	}
-	calculate_sizes(s, -1);
+	calculate_sizes(s, -1, false);
 	return length;
 }
 SLAB_ATTR(store_user);
