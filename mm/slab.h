@@ -106,7 +106,7 @@ int slub_unmergeable(struct kmem_cache *s);
 #endif
 struct kmem_cache *find_mergeable(unsigned size, unsigned align,
 		slab_flags_t flags, const char *name, void (*ctor)(void *));
-void prepare_size(struct kmem_cache *s);
+void prepare_size(struct kmem_cache *s, bool allow_maximise);
 #ifndef CONFIG_SLOB
 struct kmem_cache *
 __kmem_cache_alias(const char *name, unsigned int size, unsigned int align,
