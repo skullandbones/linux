@@ -1805,12 +1805,11 @@ slab_flags_t kmem_cache_flags(unsigned int object_size,
 }
 
 struct kmem_cache *
-__kmem_cache_alias(const char *name, unsigned int size, unsigned int align,
-		   slab_flags_t flags, void (*ctor)(void *))
+__kmem_cache_alias(struct kmem_cache *req_s)
 {
 	struct kmem_cache *cachep;
 
-	cachep = find_mergeable(size, align, flags, name, ctor);
+	cachep = find_mergeable(req_s);
 	if (cachep)
 		cachep->refcount++;
 

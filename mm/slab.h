@@ -104,21 +104,18 @@ int slab_unmergeable(struct kmem_cache *s);
 #ifdef CONFIG_SLUB
 int slub_unmergeable(struct kmem_cache *s);
 #endif
-struct kmem_cache *find_mergeable(unsigned size, unsigned align,
-		slab_flags_t flags, const char *name, void (*ctor)(void *));
+struct kmem_cache *find_mergeable(struct kmem_cache *req_s);
 void prepare_size(struct kmem_cache *s, bool allow_maximise);
 #ifndef CONFIG_SLOB
 struct kmem_cache *
-__kmem_cache_alias(const char *name, unsigned int size, unsigned int align,
-		   slab_flags_t flags, void (*ctor)(void *));
+__kmem_cache_alias(struct kmem_cache *req_s);
 
 slab_flags_t kmem_cache_flags(unsigned int object_size,
 	slab_flags_t flags, const char *name,
 	void (*ctor)(void *));
 #else
 static inline struct kmem_cache *
-__kmem_cache_alias(const char *name, unsigned int size, unsigned int align,
-		   slab_flags_t flags, void (*ctor)(void *))
+__kmem_cache_alias(struct kmem_cache *req_s);
 { return NULL; }
 
 static inline slab_flags_t kmem_cache_flags(unsigned int object_size,

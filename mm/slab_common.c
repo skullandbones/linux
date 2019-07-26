@@ -318,40 +318,29 @@ int slab_unmergeable(struct kmem_cache *s)
 	return 0;
 }
 
-struct kmem_cache *find_mergeable(unsigned int size, unsigned int align,
-		slab_flags_t flags, const char *name, void (*ctor)(void *))
+struct kmem_cache *find_mergeable(struct kmem_cache *req_s)
 {
 	struct kmem_cache *s;
-	struct kmem_cache requested;
 
-	requested.object_size = size;
-	requested.ctor = ctor;
-	requested.name = name;
-#ifdef CONFIG_SLUB
-	requested.offset = 0;
-	requested.inuse = 0;
-#endif
-	requested.size = 0;
-	requested.refcount = 0;
-	requested.usersize = 0;
+	req_s->size = ALIGN(req_s->object_size, sizeof(void *));
+	req_s->align = calculate_alignment(req_s->flags, req_s->align,
+					   req_s->size);
+	req_s->flags = kmem_cache_flags(req_s->size, req_s->flags, req_s->name,
+					req_s->ctor);
 
-	size = ALIGN(size, sizeof(void *));
-	requested.align = calculate_alignment(flags, align, size);
-	requested.flags = kmem_cache_flags(size, flags, name, NULL);
-
-	if (slab_unmergeable(&requested))
+	if (slab_unmergeable(req_s))
 		return NULL;
 
-	prepare_size(&requested, true);
+	prepare_size(req_s, true);
 
 	list_for_each_entry_reverse(s, &slab_root_caches, root_caches_node) {
 		if (slab_unmergeable(s))
 			continue;
 
-		if (requested.size != s->size)
+		if (req_s->size != s->size)
 			continue;
 
-		if ((requested.flags & SLAB_MERGE_SAME) !=
+		if ((req_s->flags & SLAB_MERGE_SAME) !=
 		    (s->flags & SLAB_MERGE_SAME))
 			continue;
 
@@ -442,6 +431,7 @@ kmem_cache_create_usercopy(const char *name,
 		  void (*ctor)(void *))
 {
 	struct kmem_cache *s = NULL;
+	struct kmem_cache *req_s = NULL;
 	const char *cache_name;
 	int err;
 
@@ -475,8 +465,20 @@ kmem_cache_create_usercopy(const char *name,
 	    WARN_ON(size < usersize || size - usersize < useroffset))
 		usersize = useroffset = 0;
 
-	if (!usersize)
-		s = __kmem_cache_alias(name, size, align, flags, ctor);
+	if (!usersize) {
+		req_s = kmem_cache_zalloc(kmem_cache, GFP_KERNEL);
+		if (!req_s) {
+			err = -ENOMEM;
+			goto out_unlock;
+		}
+		req_s->name = name;
+		req_s->object_size = size;
+		req_s->ctor = ctor;
+		req_s->flags = flags;
+		req_s->align = align;
+		s = __kmem_cache_alias(req_s);
+		kmem_cache_free(kmem_cache, req_s);
+	}
 	if (s)
 		goto out_unlock;
 
