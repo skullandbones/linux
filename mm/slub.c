@@ -4304,21 +4304,20 @@ int slub_unmergeable(struct kmem_cache *s)
 }
 
 struct kmem_cache *
-__kmem_cache_alias(const char *name, unsigned int size, unsigned int align,
-		   slab_flags_t flags, void (*ctor)(void *))
+__kmem_cache_alias(struct kmem_cache *req_s)
 {
 	struct kmem_cache *s, *c;
 
-	s = find_mergeable(size, align, flags, name, ctor);
+	s = find_mergeable(req_s);
 	if (s) {
 		s->refcount++;
 
 		for_each_memcg_cache(c, s) {
 			c->object_size = s->object_size;
-			c->inuse = max(c->inuse, ALIGN(size, sizeof(void *)));
+			c->inuse = max(c->inuse, ALIGN(s->size, sizeof(void *)));
 		}
 
-		if (sysfs_slab_alias(s, name)) {
+		if (sysfs_slab_alias(s, s->name)) {
 			s->refcount--;
 			s = NULL;
 		}
