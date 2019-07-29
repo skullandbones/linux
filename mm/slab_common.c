@@ -353,7 +353,8 @@ static struct kmem_cache *create_cache(const char *name,
 		unsigned int object_size, unsigned int align,
 		slab_flags_t flags, unsigned int useroffset,
 		unsigned int usersize, void (*ctor)(void *),
-		struct mem_cgroup *memcg, struct kmem_cache *root_cache)
+		struct mem_cgroup *memcg, struct kmem_cache *root_cache,
+		struct kmem_cache *req_s)
 {
 	struct kmem_cache *s;
 	int err;
@@ -362,9 +363,14 @@ static struct kmem_cache *create_cache(const char *name,
 		useroffset = usersize = 0;
 
 	err = -ENOMEM;
-	s = kmem_cache_zalloc(kmem_cache, GFP_KERNEL);
-	if (!s)
-		goto out;
+	if (!req_s) {
+		s = kmem_cache_zalloc(kmem_cache, GFP_KERNEL);
+		if (!s)
+			goto out;
+	} else {
+		/* Reuse requested slab information to create a cache */
+		s = req_s;
+	}
 
 	s->name = name;
 	s->size = s->object_size = object_size;
@@ -477,23 +483,23 @@ kmem_cache_create_usercopy(const char *name,
 		req_s->flags = flags;
 		req_s->align = align;
 		s = __kmem_cache_alias(req_s);
-		kmem_cache_free(kmem_cache, req_s);
 	}
 	if (s)
-		goto out_unlock;
+		goto out_unlock2;
 
 	cache_name = kstrdup_const(name, GFP_KERNEL);
 	if (!cache_name) {
 		err = -ENOMEM;
-		goto out_unlock;
+		goto out_unlock2;
 	}
 
 	s = create_cache(cache_name, size,
 			 calculate_alignment(flags, align, size),
-			 flags, useroffset, usersize, ctor, NULL, NULL);
+			 flags, useroffset, usersize, ctor, NULL, NULL, req_s);
 	if (IS_ERR(s)) {
 		err = PTR_ERR(s);
 		kfree_const(cache_name);
+		goto out_unlock2;
 	}
 
 out_unlock:
@@ -515,6 +521,11 @@ out_unlock:
 		return NULL;
 	}
 	return s;
+
+out_unlock2:
+	if (req_s)
+		kmem_cache_free(kmem_cache, req_s);
+	goto out_unlock;
 }
 EXPORT_SYMBOL(kmem_cache_create_usercopy);
 
@@ -667,7 +678,7 @@ void memcg_create_kmem_cache(struct mem_cgroup *memcg,
 			 root_cache->align,
 			 root_cache->flags & CACHE_CREATE_MASK,
 			 root_cache->useroffset, root_cache->usersize,
-			 root_cache->ctor, memcg, root_cache);
+			 root_cache->ctor, memcg, root_cache, NULL);
 	/*
 	 * If we could not create a memcg cache, do not complain, because
 	 * that's not critical at all as we can always proceed with the root
