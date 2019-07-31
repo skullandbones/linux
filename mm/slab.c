@@ -1896,35 +1896,11 @@ static bool set_on_slab_cache(struct kmem_cache *cachep,
 	return true;
 }
 
-/**
- * __kmem_cache_create - Create a cache.
- * @cachep: cache management descriptor
- * @flags: SLAB flags
- *
- * Returns a ptr to the cache on success, NULL on failure.
- * Cannot be called within a int, but can be interrupted.
- * The @ctor is run when new pages are allocated by the cache.
- *
- * The flags are
- *
- * %SLAB_POISON - Poison the slab with a known test pattern (a5a5a5a5)
- * to catch references to uninitialised memory.
- *
- * %SLAB_RED_ZONE - Insert `Red' zones around the allocated memory to check
- * for buffer overruns.
- *
- * %SLAB_HWCACHE_ALIGN - Align the objects in this cache to a hardware
- * cacheline.  This can be beneficial if you're counting cycles as closely
- * as davem.
- *
- * Return: a pointer to the created cache or %NULL in case of error
- */
-int __kmem_cache_create(struct kmem_cache *cachep, slab_flags_t flags)
+void prepare_size(struct kmem_cache *cachep)
 {
 	size_t ralign = BYTES_PER_WORD;
-	gfp_t gfp;
-	int err;
-	unsigned int size = cachep->size;
+	slab_flags_t flags = cachep->flags;
+	unsigned int size = cachep->object_size;
 
 #if DEBUG
 #if FORCED_DEBUG
@@ -1971,11 +1947,6 @@ int __kmem_cache_create(struct kmem_cache *cachep, slab_flags_t flags)
 	/* Offset must be a multiple of the alignment. */
 	if (cachep->colour_off < cachep->align)
 		cachep->colour_off = cachep->align;
-
-	if (slab_is_available())
-		gfp = GFP_KERNEL;
-	else
-		gfp = GFP_NOWAIT;
 
 #if DEBUG
 
@@ -2027,30 +1998,72 @@ int __kmem_cache_create(struct kmem_cache *cachep, slab_flags_t flags)
 				flags |= CFLGS_OFF_SLAB;
 				cachep->obj_offset += tmp_size - size;
 				size = tmp_size;
-				goto done;
 			}
 		}
 	}
 #endif
 
-	if (set_objfreelist_slab_cache(cachep, size, flags)) {
-		flags |= CFLGS_OBJFREELIST_SLAB;
+	cachep->flags = flags;
+	cachep->size = size;
+}
+
+/**
+ * __kmem_cache_create - Create a cache.
+ * @cachep: cache management descriptor
+ * @flags: SLAB flags
+ *
+ * Returns a ptr to the cache on success, NULL on failure.
+ * Cannot be called within a int, but can be interrupted.
+ * The @ctor is run when new pages are allocated by the cache.
+ *
+ * The flags are
+ *
+ * %SLAB_POISON - Poison the slab with a known test pattern (a5a5a5a5)
+ * to catch references to uninitialised memory.
+ *
+ * %SLAB_RED_ZONE - Insert `Red' zones around the allocated memory to check
+ * for buffer overruns.
+ *
+ * %SLAB_HWCACHE_ALIGN - Align the objects in this cache to a hardware
+ * cacheline.  This can be beneficial if you're counting cycles as closely
+ * as davem.
+ *
+ * Return: a pointer to the created cache or %NULL in case of error
+ */
+int __kmem_cache_create(struct kmem_cache *cachep, slab_flags_t flags)
+{
+	gfp_t gfp;
+	int err;
+
+	prepare_size(cachep, true);
+
+	if (slab_is_available())
+		gfp = GFP_KERNEL;
+	else
+		gfp = GFP_NOWAIT;
+
+#if DEBUG
+	if (cachep->flags & CFLGS_OFF_SLAB)
+		goto done;
+#endif
+
+	if (set_objfreelist_slab_cache(cachep, cachep->size, cachep->flags)) {
+		cachep->flags |= CFLGS_OBJFREELIST_SLAB;
 		goto done;
 	}
 
-	if (set_off_slab_cache(cachep, size, flags)) {
-		flags |= CFLGS_OFF_SLAB;
+	if (set_off_slab_cache(cachep, cachep->size, cachep->flags)) {
+		cachep->flags |= CFLGS_OFF_SLAB;
 		goto done;
 	}
 
-	if (set_on_slab_cache(cachep, size, flags))
+	if (set_on_slab_cache(cachep, cachep->size, cachep->flags))
 		goto done;
 
 	return -E2BIG;
 
 done:
 	cachep->freelist_size = cachep->num * sizeof(freelist_idx_t);
-	cachep->flags = flags;
 	cachep->allocflags = __GFP_COMP;
 	if (flags & SLAB_CACHE_DMA)
 		cachep->allocflags |= GFP_DMA;
@@ -2058,8 +2071,7 @@ done:
 		cachep->allocflags |= GFP_DMA32;
 	if (flags & SLAB_RECLAIM_ACCOUNT)
 		cachep->allocflags |= __GFP_RECLAIMABLE;
-	cachep->size = size;
-	cachep->reciprocal_buffer_size = reciprocal_value(size);
+	cachep->reciprocal_buffer_size = reciprocal_value(cachep->size);
 
 #if DEBUG
 	/*
